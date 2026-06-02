@@ -1,0 +1,35 @@
+# dependencies
+node_modules/
+.pnp.*
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# storage (lokalne zdjęcia tras w dev)
+apps/api/storage/
+apps/api/uploads/
+
+# prisma
+apps/api/prisma/*.db
+
+# expo / mobile
+apps/mobile/.expo/
+apps/mobile/dist/
+apps/mobile/web-build/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

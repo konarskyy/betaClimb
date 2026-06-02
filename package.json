@@ -1,0 +1,21 @@
+{
+  "name": "betaclimb",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aplikacja mobilna do wspinaczki sportowej — analiza trasy ze zdjęcia i optymalna beta personalizowana wzrostem",
+  "workspaces": [
+    "packages/*",
+    "apps/api"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace packages/shared && npm run build --workspace packages/beta-engine",
+    "test": "npm run test --workspace packages/beta-engine && npm run test --workspace apps/api",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "dev:api": "npm run dev --workspace apps/api",
+    "dev:mobile": "npm --prefix apps/mobile run start"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
