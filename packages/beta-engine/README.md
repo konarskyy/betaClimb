@@ -3,28 +3,38 @@
 Rdzeń projektu: wyznaczanie **optymalnej bety** (sekwencji ruchów) na podstawie
 chwytów zaznaczonych na zdjęciu trasy, spersonalizowane pod **wzrost** wspinacza.
 
-## Model
+## Model (z nogami)
 
-1. **Chwyty → centymetry.** Chwyty mają współrzędne znormalizowane `[0,1]`. Skalę
-   px→cm wyznaczamy ze znanej wysokości trasy w metrach (`routeHeightM`) i wysokości
-   zdjęcia w pikselach (zakładamy kwadratowe piksele). Oś `yUp` rośnie ku górze.
-2. **Graf.** Węzły = chwyty. Krawędź `a→b` istnieje, gdy `b` jest **wyżej** niż `a`
-   (progres) i odległość `≤ zasięg`. Ścisły warunek „wyżej" czyni graf acyklicznym.
-3. **Zasięg.** `maxReach = wzrost × współczynnik`. Wyższy wspinacz ma większy zasięg,
-   więc może pomijać chwyty pośrednie → krótsza/inna beta.
-4. **Najlepsza ścieżka.** Dijkstra z wirtualnym źródłem (wszystkie starty) do
-   wirtualnego ujścia (wszystkie topy). Koszt krawędzi zależy od poziomu bety.
+Wspinanie nie odbywa się „na rękach" — **nogi dają zasięg i siłę**. Dlatego każdy
+ruch ręki liczony jest **od chwytu pod stopą**, nie od dłoni.
+
+1. **Chwyty → centymetry.** Współrzędne znormalizowane `[0,1]` przeliczamy na cm ze
+   znanej wysokości trasy (`routeHeightM`) i wysokości zdjęcia (kwadratowe piksele).
+   Oś `yUp` rośnie ku górze.
+2. **Analiza ruchu z modelem nóg.** Dla ruchu ręki `a→b` algorytm szuka **najlepszego
+   chwytu pod stopę**: chwyt na/poniżej rąk, poniżej celu i w zasięgu nogi
+   (`≤ 0.85 × wzrost`). Wykonalność i trudność liczone są od tego chwytu do celu
+   (`footDist`). Chwyt `a` jest zawsze kandydatem (stopa na opuszczanym chwycie).
+3. **Statycznie czy dynamicznie?**
+   - `footDist ≤ 1.0 × wzrost` → ruch **statyczny** (da się wykonać stojąc na chwycie),
+   - `1.0 × wzrost < footDist ≤ 1.4 × wzrost` → ruch **dynamiczny** (wyskok napędzany
+     nogami — stopa za nisko, by sięgnąć w kontroli),
+   - powyżej `1.4 × wzrost` → ruch niewykonalny.
+4. **Graf.** Węzły = chwyty; krawędź `a→b` gdy `b` jest wyżej i poziom dopuszcza ruch.
+   Ścisły warunek „wyżej" czyni graf acyklicznym.
+5. **Najlepsza ścieżka.** Dijkstra od wirtualnego źródła (starty) do ujścia (topy).
 
 ## Poziomy bety
 
-| Poziom | Współczynnik zasięgu | Koszt ruchu `u = dystans/zasięg` | Charakter |
-|--------|----------------------|----------------------------------|-----------|
-| `static`  | 0.65 | `0.2 + u²` | wiele krótkich, pewnych ruchów (lock-off) |
-| `dynamic` | 0.95 | `1 + 0.25u` | minimalizacja liczby ruchów (mniej, większych / dyno) |
-| `flash`   | 0.85 | `0.6 + 1.5u²` | kompromis „najlepszego pierwszego przejścia" |
+| Poziom | Dozwolone ruchy | Koszt (`uₛ, u_d` = footDist / zasięg) | Charakter |
+|--------|-----------------|---------------------------------------|-----------|
+| `static`  | tylko statyczne (z oparciem nogi) | `0.2 + uₛ²` | pewne, krótkie ruchy |
+| `dynamic` | statyczne + wyskoki | `1 + 0.25·u_d` | minimalizacja liczby ruchów |
+| `flash`   | statyczne + wyskoki | statyczny: `0.6 + uₛ²`, wyskok: `1.2 + 1.5·u_d²` | preferuje statykę, wyskok z karą |
 
-Ruch o dystansie większym niż zasięg statyczny (`0.65 × wzrost`) jest oznaczany
-jako **dynamiczny** (`isDynamic`).
+Każdy ruch w wyniku ma `footHoldId` (chwyt pod stopę), `footReachCm` (zasięg od stopy)
+oraz `isDynamic`. Współczynniki: `STATIC_REACH_FACTOR=1.0`, `DYNAMIC_REACH_FACTOR=1.4`,
+`LEG_SPAN_FACTOR=0.85` (w `levels.ts`).
 
 ## API
 
@@ -46,6 +56,10 @@ npm run test --workspace packages/beta-engine
 ```
 
 ## Uproszczenia (jawne)
-- Model **pojedynczego punktu progresji** — nie pełna biomechanika 4 kończyn.
+- Model **stance (ręce + stopa)** — uwzględnia oparcie dla nogi, ale nie pełną
+  biomechanikę 4 kończyn ani balansu środka ciężkości. Oparcie dla stopy wybierane
+  jest niezależnie dla każdego ruchu (zakładamy optymalne ustawienie nóg).
+- Każdy chwyt może służyć za stopnik (brak osobnych stopni/wcięć — to naturalne
+  rozszerzenie na przyszłość).
 - Skala px→cm z wysokości trasy podanej przez użytkownika.
-- Zasięg ≈ funkcja liniowa wzrostu (proxy dla wymachu ramion / lock-offu).
+- Zasięg ≈ funkcja liniowa wzrostu (proxy dla wyprostu ciała i siły nóg).

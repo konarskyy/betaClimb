@@ -35,13 +35,21 @@ export interface BetaMove {
   index: number;
   fromHoldId: string;
   toHoldId: string;
-  /** dystans ruchu w centymetrach (w skali rzeczywistej trasy) */
+  /**
+   * Chwyt, na którym opiera się stopa podczas tego ruchu (model nóg).
+   * Zasięg ruchu liczony jest od tego chwytu, nie od ręki. Może być równy
+   * `fromHoldId` (stopa na opuszczanym chwycie) lub innym chwytem pod celem.
+   */
+  footHoldId: string;
+  /** dystans samego ruchu ręki (z chwytu na chwyt) w centymetrach */
   distanceCm: number;
-  /** stopień wykorzystania zasięgu: distanceCm / maxReachCm (0..1+) */
+  /** dystans od chwytu pod stopą do celu — to on decyduje o wykonalności */
+  footReachCm: number;
+  /** stopień wykorzystania zasięgu: footReachCm / maxReachCm (0..1+) */
   reachUsage: number;
   /** względna trudność ruchu (im wyżej, tym trudniej) */
   difficulty: number;
-  /** czy ruch jest dynamiczny (rzut/dyno) — przekracza zasięg statyczny */
+  /** czy ruch jest dynamiczny (wyskok) — stopa za nisko, by sięgnąć statycznie */
   isDynamic: boolean;
 }
 

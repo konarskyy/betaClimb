@@ -54,7 +54,11 @@ export interface BetaMove {
   index: number;
   fromHoldId: string;
   toHoldId: string;
+  /** chwyt pod stopę wspierający ruch (model nóg) */
+  footHoldId: string;
   distanceCm: number;
+  /** dystans od stopy do celu — decyduje o wykonalności */
+  footReachCm: number;
   reachUsage: number;
   difficulty: number;
   isDynamic: boolean;

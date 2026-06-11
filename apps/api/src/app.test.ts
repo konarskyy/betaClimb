@@ -112,6 +112,7 @@ describe("przepływ auth → trasa → beta", () => {
       payload: { heightCm: 200 },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().betas.static.maxReachCm).toBe(Math.round(200 * 0.65));
+    // model nóg: statyczny zasięg = 1.0 × wzrost (od chwytu pod stopą)
+    expect(res.json().betas.static.maxReachCm).toBe(Math.round(200 * 1.0));
   });
 });
