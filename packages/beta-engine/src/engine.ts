@@ -13,7 +13,9 @@ import {
   LEG_SPAN_FACTOR,
   LEVEL_CONFIGS,
   MIN_FOOT_DROP_FACTOR,
+  SMEAR_REACH_FACTOR,
   STATIC_REACH_FACTOR,
+  type FootType,
   type LevelConfig,
   type MoveAnalysis,
 } from "./levels.js";
@@ -26,16 +28,19 @@ interface Edge {
   cost: number;
 }
 
+/** Wysokość (yUp) dolnej krawędzi ściany — poniżej zaczyna się ziemia. */
+const GROUND_YUP_CM = 0;
+
 /**
- * Analiza ruchu ręki `a → b` z modelem nóg.
+ * Analiza ruchu ręki `a → b` z modelem nóg. Oparcie stopy wybierane jest w kolejności:
+ *  1. **chwyt** — inny niż trzymany ręką i wyraźnie poniżej rąk (technika „stopa idzie
+ *     za ręką"); najlepsze oparcie, pełny zasięg,
+ *  2. **smear** — tarcie o gołą ścianę tuż pod rękami (gdy brak chwytu); słabszy zasięg,
+ *     dozwolone tylko powyżej ziemi,
+ *  3. **flaga** — noga w powietrzu (gdy nie ma już miejsca nad ziemią); brak nacisku,
+ *     więc ruch tylko dynamiczny.
  *
- * Stopa MUSI być na innym chwycie niż dłonie i wyraźnie poniżej rąk (nie da się
- * stanąć na chwycie trzymanym ręką ani na tej samej wysokości). To oddaje technikę
- * „stopa idzie za ręką" — noga ląduje na chwycie, który ręka wcześniej opuściła.
- *
- * Przypadki brzegowe:
- *  - na starcie stoimy na ziemi/chwytach startowych (stabilna baza),
- *  - gdy brak chwytu pod stopę — ruch jest możliwy tylko dynamicznie (wyskok bez nóg).
+ * Stopa nigdy nie dotyka ziemi (smear wymaga `yUp > GROUND_YUP_CM`).
  */
 export function analyzeMove(
   a: HoldCm,
@@ -43,51 +48,77 @@ export function analyzeMove(
   holds: HoldCm[],
   heightCm: number,
 ): MoveAnalysis {
-  const staticReachCm = heightCm * STATIC_REACH_FACTOR;
+  const holdReachCm = heightCm * STATIC_REACH_FACTOR;
+  const smearReachCm = heightCm * SMEAR_REACH_FACTOR;
   const dynamicReachCm = heightCm * DYNAMIC_REACH_FACTOR;
   const legSpanCm = heightCm * LEG_SPAN_FACTOR;
   const minDropCm = heightCm * MIN_FOOT_DROP_FACTOR;
 
-  // najlepszy chwyt pod stopę: inny niż chwyt rąk, wyraźnie poniżej rąk, w zasięgu nogi
-  let footHoldId: string | null = null;
-  let footDistCm = Infinity;
+  // 1) najlepszy chwyt pod stopę: inny niż chwyt rąk, wyraźnie poniżej rąk, w zasięgu nogi
+  let bestHoldId: string | null = null;
+  let bestHoldDist = Infinity;
   for (const f of holds) {
-    if (f.id === a.id) continue; // nie ten sam chwyt co ręce
-    if (f.yUpCm > a.yUpCm - minDropCm) continue; // stopa wyraźnie poniżej rąk
-    if (distanceCm(a, f) > legSpanCm) continue; // chwyt w zasięgu nogi
+    if (f.id === a.id) continue;
+    if (f.yUpCm > a.yUpCm - minDropCm) continue;
+    if (distanceCm(a, f) > legSpanCm) continue;
     const d = distanceCm(f, b);
-    if (d < footDistCm) {
-      footDistCm = d;
-      footHoldId = f.id;
+    if (d < bestHoldDist) {
+      bestHoldDist = d;
+      bestHoldId = f.id;
     }
   }
 
-  let footSupported: boolean;
-  if (footHoldId !== null) {
-    footSupported = true;
-  } else if (a.isStart) {
-    // na starcie stoimy na ziemi / chwytach startowych — stabilna baza
-    footHoldId = a.id;
-    footDistCm = distanceCm(a, b);
-    footSupported = true;
+  // 2) smear: stopa o ścianę tuż pod rękami, ale powyżej ziemi
+  const smearYUp = a.yUpCm - minDropCm;
+  const smearAvailable = smearYUp > GROUND_YUP_CM;
+  const smearDist = smearAvailable ? Math.hypot(b.xCm - a.xCm, b.yUpCm - smearYUp) : Infinity;
+
+  let footType: FootType;
+  let footHoldId: string | null;
+  let footDistCm: number;
+  let footReachCm = 0;
+  let staticFeasible: boolean;
+
+  if (bestHoldId !== null && bestHoldDist <= holdReachCm) {
+    footType = "hold";
+    footHoldId = bestHoldId;
+    footDistCm = bestHoldDist;
+    footReachCm = holdReachCm;
+    staticFeasible = true;
+  } else if (smearAvailable && smearDist <= smearReachCm) {
+    footType = "smear";
+    footHoldId = null;
+    footDistCm = smearDist;
+    footReachCm = smearReachCm;
+    staticFeasible = true;
   } else {
-    // brak oparcia dla nogi — ruch tylko dynamiczny (wyskok bez nóg)
-    footHoldId = a.id;
-    footDistCm = distanceCm(a, b);
-    footSupported = false;
+    // brak ruchu statycznego — wybierz najlepszą nogę do wyskoku, inaczej flaga
+    staticFeasible = false;
+    if (bestHoldId !== null && (!smearAvailable || bestHoldDist <= smearDist)) {
+      footType = "hold";
+      footHoldId = bestHoldId;
+      footDistCm = bestHoldDist;
+    } else if (smearAvailable) {
+      footType = "smear";
+      footHoldId = null;
+      footDistCm = smearDist;
+    } else {
+      footType = "flag";
+      footHoldId = null;
+      footDistCm = distanceCm(a, b);
+    }
   }
 
-  const staticUsage = footDistCm / staticReachCm;
-  const dynamicUsage = footDistCm / dynamicReachCm;
-  const staticFeasible = footSupported && footDistCm <= staticReachCm;
+  const staticUsage = staticFeasible ? footDistCm / footReachCm : Number.POSITIVE_INFINITY;
   return {
+    footType,
     footHoldId,
     handDistCm: distanceCm(a, b),
     footDistCm,
-    staticReachCm,
+    staticReachCm: holdReachCm,
     dynamicReachCm,
     staticUsage,
-    dynamicUsage,
+    dynamicUsage: footDistCm / dynamicReachCm,
     staticFeasible,
     dynamicFeasible: footDistCm <= dynamicReachCm,
     isDynamic: !staticFeasible,
@@ -223,8 +254,6 @@ export function computeBeta(
   const cmHolds = holds.map((h) => toCm(h, geometry));
   const byId = new Map(cmHolds.map((h) => [h.id, h]));
   const { starts, finishes } = resolveEndpoints(cmHolds);
-  // Wyznaczone starty (także z fallbacku) dają stabilną bazę dla pierwszego ruchu.
-  for (const h of cmHolds) if (starts.has(h.id)) h.isStart = true;
 
   const adj = buildGraph(cmHolds, climber.heightCm, config);
   const path = shortestPath(cmHolds, adj, starts, finishes);
@@ -257,6 +286,7 @@ export function computeBeta(
       index: i,
       fromHoldId: from.id,
       toHoldId: to.id,
+      footType: an.footType,
       footHoldId: an.footHoldId,
       distanceCm: Math.round(an.handDistCm * 10) / 10,
       footReachCm: Math.round(an.footDistCm * 10) / 10,

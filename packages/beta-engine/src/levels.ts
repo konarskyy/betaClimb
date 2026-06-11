@@ -8,6 +8,8 @@ import type { BetaLevel } from "@betaclimb/shared";
  */
 /** Statyczny zasięg ciała: stojąc na chwycie, ręka sięga ~1.0× wzrostu nad stopę. */
 export const STATIC_REACH_FACTOR = 1.0;
+/** Zasięg przy tarciu o gołą ścianę (smear) — słabszy niż na chwycie. */
+export const SMEAR_REACH_FACTOR = 0.8;
 /** Dynamiczny zasięg: wyskok napędzany nogami sięga znacznie dalej. */
 export const DYNAMIC_REACH_FACTOR = 1.4;
 /** Jak daleko od rąk można postawić stopę (zasięg nogi). */
@@ -20,12 +22,22 @@ export const LEG_SPAN_FACTOR = 0.85;
 export const MIN_FOOT_DROP_FACTOR = 0.15;
 
 /**
+ * Rodzaj oparcia stopy:
+ *  - `hold`  — na innym, niżej położonym chwycie,
+ *  - `smear` — tarcie o gołą ścianę (gdy brak chwytu),
+ *  - `flag`  — noga w powietrzu (brak oparcia; tylko ruch dynamiczny).
+ */
+export type FootType = "hold" | "smear" | "flag";
+
+/**
  * Analiza pojedynczego ruchu ręki z chwytu na chwyt, z uwzględnieniem
  * najlepszego dostępnego oparcia dla stopy.
  */
 export interface MoveAnalysis {
-  /** chwyt wybrany pod stopę */
-  footHoldId: string;
+  /** rodzaj oparcia stopy */
+  footType: FootType;
+  /** chwyt pod stopę (tylko gdy footType === "hold") */
+  footHoldId: string | null;
   /** dystans samego ruchu ręki */
   handDistCm: number;
   /** dystans od stopy do celu — decyduje o wykonalności */

@@ -99,16 +99,15 @@ export default function RouteDetail() {
           {beta.moves.map((m) => {
             const to = holdsById.get(m.toHoldId);
             const target = to?.isFinish ? "TOP" : `chwyt ${beta.holdSequence.indexOf(m.toHoldId) + 1}`;
-            const footIdx = beta.holdSequence.indexOf(m.footHoldId);
-            const fromHold = holdsById.get(m.fromHoldId);
+            const footIdx = m.footHoldId ? beta.holdSequence.indexOf(m.footHoldId) : -1;
             const footLabel =
-              m.footHoldId === m.fromHoldId
-                ? fromHold?.isStart
-                  ? "baza startowa"
-                  : "brak stopnia (wyskok)"
-                : footIdx >= 0
-                  ? `krok ${footIdx + 1}`
-                  : "chwyt pomocniczy";
+              m.footType === "smear"
+                ? "tarcie o ścianę"
+                : m.footType === "flag"
+                  ? "noga w powietrzu"
+                  : footIdx >= 0
+                    ? `krok ${footIdx + 1}`
+                    : "chwyt pomocniczy";
             return (
               <View key={m.index} style={styles.move}>
                 <View style={[styles.moveNum, { backgroundColor: levelColor[level] }]}>

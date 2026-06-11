@@ -29,18 +29,24 @@ export interface RouteGeometry {
   routeHeightM: number;
 }
 
+/**
+ * Rodzaj oparcia stopy podczas ruchu:
+ *  - `hold`  — na innym, niżej położonym chwycie,
+ *  - `smear` — tarcie o gołą ścianę (gdy brak chwytu),
+ *  - `flag`  — noga w powietrzu (brak oparcia; ruch dynamiczny).
+ */
+export type FootType = "hold" | "smear" | "flag";
+
 /** Pojedynczy ruch w wyznaczonej becie. */
 export interface BetaMove {
   /** numer ruchu, liczony od 1 */
   index: number;
   fromHoldId: string;
   toHoldId: string;
-  /**
-   * Chwyt, na którym opiera się stopa podczas tego ruchu (model nóg).
-   * Zasięg ruchu liczony jest od tego chwytu, nie od ręki. Może być równy
-   * `fromHoldId` (stopa na opuszczanym chwycie) lub innym chwytem pod celem.
-   */
-  footHoldId: string;
+  /** rodzaj oparcia stopy (model nóg) */
+  footType: FootType;
+  /** chwyt pod stopę — tylko gdy footType === "hold", inaczej null */
+  footHoldId: string | null;
   /** dystans samego ruchu ręki (z chwytu na chwyt) w centymetrach */
   distanceCm: number;
   /** dystans od chwytu pod stopą do celu — to on decyduje o wykonalności */

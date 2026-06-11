@@ -50,12 +50,16 @@ export interface RouteDetail extends RouteSummary {
   holds: Hold[];
 }
 
+export type FootType = "hold" | "smear" | "flag";
+
 export interface BetaMove {
   index: number;
   fromHoldId: string;
   toHoldId: string;
-  /** chwyt pod stopę wspierający ruch (model nóg) */
-  footHoldId: string;
+  /** rodzaj oparcia stopy: chwyt / tarcie o ścianę / noga w powietrzu */
+  footType: FootType;
+  /** chwyt pod stopę — tylko gdy footType === "hold" */
+  footHoldId: string | null;
   distanceCm: number;
   /** dystans od stopy do celu — decyduje o wykonalności */
   footReachCm: number;

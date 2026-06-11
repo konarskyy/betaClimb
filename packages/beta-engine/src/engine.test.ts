@@ -6,9 +6,9 @@ import { computeAllBetas, computeBeta } from "./engine.js";
  * Geometria testowa: 1000x1000 px, trasa 10 m → 1 cm na piksel.
  * Pozycja w cm = (x*1000, (1-y)*1000).
  *
- * Model nóg (wzrost 180): statyczny zasięg 180 cm, dynamiczny 252 cm,
- * zasięg nogi 153 cm, minimalny spadek stopy 27 cm.
- * Stopa musi być na INNYM chwycie i wyraźnie poniżej rąk.
+ * Model nóg (wzrost 180): zasięg na chwycie 180 cm, na tarciu (smear) 144 cm,
+ * dynamiczny 252 cm, zasięg nogi 153 cm, minimalny spadek stopy 27 cm.
+ * Stopa: chwyt → tarcie o ścianę → noga w powietrzu (nigdy ziemia).
  */
 const GEO: RouteGeometry = { imgW: 1000, imgH: 1000, routeHeightM: 10 };
 
@@ -24,7 +24,6 @@ function hold(x: number, y: number, opts: Partial<Hold> = {}): Hold {
 }
 
 describe("computeBeta — drabinka co 80 cm", () => {
-  // kolumna chwytów co 80 cm: yUp 100, 180, 260, 340
   const holds: Hold[] = [
     hold(0.5, 0.9, { id: "start", isStart: true }),
     hold(0.5, 0.82, { id: "h180" }),
@@ -48,39 +47,43 @@ describe("computeBeta — drabinka co 80 cm", () => {
       expect(yById.get(m.toHoldId)!).toBeLessThan(yById.get(m.fromHoldId)!);
     }
   });
-});
 
-describe("model nóg — stopa poniżej rąk, na innym chwycie", () => {
-  const holds: Hold[] = [
-    hold(0.5, 0.9, { id: "start", isStart: true }),
-    hold(0.5, 0.82, { id: "h180" }),
-    hold(0.5, 0.74, { id: "h260" }),
-    hold(0.5, 0.66, { id: "top", isFinish: true }),
-  ];
-
-  it("stopa stoi na niżej położonym chwycie, nie na chwycie rąk", () => {
+  it("na starcie noga jest na ścianie (smear), wyżej na niższym chwycie", () => {
     const beta = computeBeta(holds, GEO, { heightCm: 180 }, "static");
     const yById = new Map(holds.map((h) => [h.id, h.y]));
-    // ostatni ruch (h260 -> top): stopa na h180 — inny chwyt i wyraźnie niżej
+    // pierwszy ruch ze startu — brak chwytu pod nogę → tarcie o ścianę
+    expect(beta.moves[0]!.footType).toBe("smear");
+    expect(beta.moves[0]!.footHoldId).toBeNull();
+    // ostatni ruch — stopa na realnym, niżej położonym chwycie
     const last = beta.moves.at(-1)!;
-    expect(last.fromHoldId).toBe("h260");
-    expect(last.footHoldId).not.toBe(last.fromHoldId);
-    // niżej = większe y obrazu
-    expect(yById.get(last.footHoldId)!).toBeGreaterThan(yById.get(last.fromHoldId)!);
+    expect(last.footType).toBe("hold");
+    expect(last.footHoldId).toBe("h180");
+    expect(yById.get(last.footHoldId!)!).toBeGreaterThan(yById.get(last.fromHoldId)!);
+  });
+});
+
+describe("smear vs flaga — noga nigdy nie dotyka ziemi", () => {
+  it("tuż nad ziemią, bez chwytu pod nogę → noga w powietrzu (flaga)", () => {
+    const holds: Hold[] = [
+      hold(0.5, 0.98, { id: "start", isStart: true }), // yUp 20 — tuż nad ziemią
+      hold(0.5, 0.8, { id: "top", isFinish: true }), // yUp 200
+    ];
+    const beta = computeBeta(holds, GEO, { heightCm: 180 }, "dynamic");
+    expect(beta.feasible).toBe(true);
+    expect(beta.moves[0]!.footType).toBe("flag");
+    expect(beta.moves[0]!.isDynamic).toBe(true);
   });
 });
 
 describe("statyczny vs dynamiczny", () => {
-  // pojedyncza luka 220 cm (baza na starcie, ale za daleko na ruch statyczny)
   const holds: Hold[] = [
     hold(0.5, 0.8, { id: "start", isStart: true }),
-    hold(0.5, 0.58, { id: "top", isFinish: true }),
+    hold(0.5, 0.58, { id: "top", isFinish: true }), // luka 220 cm
   ];
 
   it("statyczny niewykonalny, dynamiczny/flash wykonalny (wyskok)", () => {
     const betas = computeAllBetas(holds, GEO, { heightCm: 180 });
     expect(betas.static.feasible).toBe(false);
-    expect(betas.static.note).toMatch(/zasięg/i);
     expect(betas.dynamic.feasible).toBe(true);
     expect(betas.flash.feasible).toBe(true);
     expect(betas.dynamic.moves[0]!.isDynamic).toBe(true);
@@ -88,10 +91,9 @@ describe("statyczny vs dynamiczny", () => {
 });
 
 describe("wpływ wzrostu — ten sam ruch: wyskok vs kontrola", () => {
-  // luka 190 cm
   const holds: Hold[] = [
     hold(0.5, 0.8, { id: "start", isStart: true }),
-    hold(0.5, 0.61, { id: "top", isFinish: true }),
+    hold(0.5, 0.68, { id: "top", isFinish: true }), // luka 120 cm (przez smear)
   ];
 
   it("niski musi wyskoczyć, wysoki robi statycznie", () => {
@@ -99,16 +101,15 @@ describe("wpływ wzrostu — ten sam ruch: wyskok vs kontrola", () => {
     const tall = computeBeta(holds, GEO, { heightCm: 210 }, "dynamic");
     expect(low.feasible).toBe(true);
     expect(tall.feasible).toBe(true);
-    expect(low.moves[0]!.isDynamic).toBe(true); // 190 > zasięg statyczny 160
-    expect(tall.moves[0]!.isDynamic).toBe(false); // 190 ≤ zasięg statyczny 210
+    expect(low.moves[0]!.isDynamic).toBe(true);
+    expect(tall.moves[0]!.isDynamic).toBe(false);
   });
 });
 
 describe("brak przejścia", () => {
-  // luka 300 cm, niski wspinacz (zasięg dynamiczny 210 cm)
   const holds: Hold[] = [
     hold(0.5, 0.8, { id: "start", isStart: true }),
-    hold(0.5, 0.5, { id: "top", isFinish: true }),
+    hold(0.5, 0.5, { id: "top", isFinish: true }), // luka 300 cm
   ];
 
   it("wszystkie poziomy niewykonalne", () => {
@@ -121,7 +122,6 @@ describe("brak przejścia", () => {
 });
 
 describe("fallback start/top", () => {
-  // bez oznaczeń — najniższy chwyt staje się startem (z bazą), najwyższy topem
   const holds: Hold[] = [
     hold(0.5, 0.9, { id: "a" }),
     hold(0.5, 0.82, { id: "b" }),
