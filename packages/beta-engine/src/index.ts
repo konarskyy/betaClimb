@@ -4,6 +4,7 @@ export {
   STATIC_REACH_FACTOR,
   DYNAMIC_REACH_FACTOR,
   LEG_SPAN_FACTOR,
+  MIN_FOOT_DROP_FACTOR,
   type LevelConfig,
   type MoveAnalysis,
 } from "./levels.js";

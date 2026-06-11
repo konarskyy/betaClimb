@@ -12,6 +12,7 @@ import {
   DYNAMIC_REACH_FACTOR,
   LEG_SPAN_FACTOR,
   LEVEL_CONFIGS,
+  MIN_FOOT_DROP_FACTOR,
   STATIC_REACH_FACTOR,
   type LevelConfig,
   type MoveAnalysis,
@@ -26,10 +27,15 @@ interface Edge {
 }
 
 /**
- * Analiza ruchu ręki `a → b` z modelem nóg: szuka najlepszego chwytu pod stopę
- * (na/poniżej rąk i poniżej celu, w zasięgu nogi) i liczy wykonalność OD STOPY.
- * Chwyt `a` jest zawsze kandydatem (stopa na opuszczanym chwycie), więc oparcie
- * istnieje zawsze — feet nigdy nie blokują ruchu sztucznie.
+ * Analiza ruchu ręki `a → b` z modelem nóg.
+ *
+ * Stopa MUSI być na innym chwycie niż dłonie i wyraźnie poniżej rąk (nie da się
+ * stanąć na chwycie trzymanym ręką ani na tej samej wysokości). To oddaje technikę
+ * „stopa idzie za ręką" — noga ląduje na chwycie, który ręka wcześniej opuściła.
+ *
+ * Przypadki brzegowe:
+ *  - na starcie stoimy na ziemi/chwytach startowych (stabilna baza),
+ *  - gdy brak chwytu pod stopę — ruch jest możliwy tylko dynamicznie (wyskok bez nóg).
  */
 export function analyzeMove(
   a: HoldCm,
@@ -40,14 +46,14 @@ export function analyzeMove(
   const staticReachCm = heightCm * STATIC_REACH_FACTOR;
   const dynamicReachCm = heightCm * DYNAMIC_REACH_FACTOR;
   const legSpanCm = heightCm * LEG_SPAN_FACTOR;
+  const minDropCm = heightCm * MIN_FOOT_DROP_FACTOR;
 
-  // start: stopa na opuszczanym chwycie
-  let footHoldId = a.id;
-  let footDistCm = distanceCm(a, b);
-
+  // najlepszy chwyt pod stopę: inny niż chwyt rąk, wyraźnie poniżej rąk, w zasięgu nogi
+  let footHoldId: string | null = null;
+  let footDistCm = Infinity;
   for (const f of holds) {
-    if (f.yUpCm > a.yUpCm + UPWARD_EPSILON_CM) continue; // stopa nie wyżej niż ręce
-    if (f.yUpCm >= b.yUpCm) continue; // stopa poniżej celu
+    if (f.id === a.id) continue; // nie ten sam chwyt co ręce
+    if (f.yUpCm > a.yUpCm - minDropCm) continue; // stopa wyraźnie poniżej rąk
     if (distanceCm(a, f) > legSpanCm) continue; // chwyt w zasięgu nogi
     const d = distanceCm(f, b);
     if (d < footDistCm) {
@@ -56,8 +62,24 @@ export function analyzeMove(
     }
   }
 
+  let footSupported: boolean;
+  if (footHoldId !== null) {
+    footSupported = true;
+  } else if (a.isStart) {
+    // na starcie stoimy na ziemi / chwytach startowych — stabilna baza
+    footHoldId = a.id;
+    footDistCm = distanceCm(a, b);
+    footSupported = true;
+  } else {
+    // brak oparcia dla nogi — ruch tylko dynamiczny (wyskok bez nóg)
+    footHoldId = a.id;
+    footDistCm = distanceCm(a, b);
+    footSupported = false;
+  }
+
   const staticUsage = footDistCm / staticReachCm;
   const dynamicUsage = footDistCm / dynamicReachCm;
+  const staticFeasible = footSupported && footDistCm <= staticReachCm;
   return {
     footHoldId,
     handDistCm: distanceCm(a, b),
@@ -66,9 +88,9 @@ export function analyzeMove(
     dynamicReachCm,
     staticUsage,
     dynamicUsage,
-    staticFeasible: footDistCm <= staticReachCm,
+    staticFeasible,
     dynamicFeasible: footDistCm <= dynamicReachCm,
-    isDynamic: footDistCm > staticReachCm,
+    isDynamic: !staticFeasible,
   };
 }
 
@@ -201,6 +223,8 @@ export function computeBeta(
   const cmHolds = holds.map((h) => toCm(h, geometry));
   const byId = new Map(cmHolds.map((h) => [h.id, h]));
   const { starts, finishes } = resolveEndpoints(cmHolds);
+  // Wyznaczone starty (także z fallbacku) dają stabilną bazę dla pierwszego ruchu.
+  for (const h of cmHolds) if (starts.has(h.id)) h.isStart = true;
 
   const adj = buildGraph(cmHolds, climber.heightCm, config);
   const path = shortestPath(cmHolds, adj, starts, finishes);

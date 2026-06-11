@@ -100,9 +100,12 @@ export default function RouteDetail() {
             const to = holdsById.get(m.toHoldId);
             const target = to?.isFinish ? "TOP" : `chwyt ${beta.holdSequence.indexOf(m.toHoldId) + 1}`;
             const footIdx = beta.holdSequence.indexOf(m.footHoldId);
+            const fromHold = holdsById.get(m.fromHoldId);
             const footLabel =
               m.footHoldId === m.fromHoldId
-                ? "ten sam chwyt"
+                ? fromHold?.isStart
+                  ? "baza startowa"
+                  : "brak stopnia (wyskok)"
                 : footIdx >= 0
                   ? `krok ${footIdx + 1}`
                   : "chwyt pomocniczy";

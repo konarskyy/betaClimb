@@ -12,6 +12,12 @@ export const STATIC_REACH_FACTOR = 1.0;
 export const DYNAMIC_REACH_FACTOR = 1.4;
 /** Jak daleko od rąk można postawić stopę (zasięg nogi). */
 export const LEG_SPAN_FACTOR = 0.85;
+/**
+ * Minimalny pionowy „spadek" stopy względem rąk. Stopa musi być wyraźnie
+ * PONIŻEJ rąk — nie da się stanąć na chwycie trzymanym ręką ani na tej samej
+ * wysokości co dłonie.
+ */
+export const MIN_FOOT_DROP_FACTOR = 0.15;
 
 /**
  * Analiza pojedynczego ruchu ręki z chwytu na chwyt, z uwzględnieniem

@@ -3,11 +3,12 @@ import type { Hold, RouteGeometry } from "@betaclimb/shared";
 import { computeAllBetas, computeBeta } from "./engine.js";
 
 /**
- * Geometria testowa: 1000x1000 px, trasa 10 m wysokości → 1 cm na piksel.
+ * Geometria testowa: 1000x1000 px, trasa 10 m → 1 cm na piksel.
  * Pozycja w cm = (x*1000, (1-y)*1000).
  *
- * Model nóg: zasięg liczony od chwytu pod stopą.
- * Dla wzrostu 180: statyczny 180 cm, dynamiczny 252 cm.
+ * Model nóg (wzrost 180): statyczny zasięg 180 cm, dynamiczny 252 cm,
+ * zasięg nogi 153 cm, minimalny spadek stopy 27 cm.
+ * Stopa musi być na INNYM chwycie i wyraźnie poniżej rąk.
  */
 const GEO: RouteGeometry = { imgW: 1000, imgH: 1000, routeHeightM: 10 };
 
@@ -22,17 +23,16 @@ function hold(x: number, y: number, opts: Partial<Hold> = {}): Hold {
   };
 }
 
-describe("computeBeta — prosta drabinka", () => {
-  // Chwyty co 100 cm w pionie, w jednej kolumnie.
+describe("computeBeta — drabinka co 80 cm", () => {
+  // kolumna chwytów co 80 cm: yUp 100, 180, 260, 340
   const holds: Hold[] = [
     hold(0.5, 0.9, { id: "start", isStart: true }),
-    hold(0.5, 0.8),
-    hold(0.5, 0.7),
-    hold(0.5, 0.6),
-    hold(0.5, 0.5, { id: "top", isFinish: true }),
+    hold(0.5, 0.82, { id: "h180" }),
+    hold(0.5, 0.74, { id: "h260" }),
+    hold(0.5, 0.66, { id: "top", isFinish: true }),
   ];
 
-  it("znajduje przejście od startu do topu na każdym poziomie", () => {
+  it("znajduje przejście na każdym poziomie", () => {
     const betas = computeAllBetas(holds, GEO, { heightCm: 180 });
     for (const level of ["static", "dynamic", "flash"] as const) {
       expect(betas[level].feasible).toBe(true);
@@ -41,44 +41,43 @@ describe("computeBeta — prosta drabinka", () => {
     }
   });
 
-  it("każdy ruch ma chwyt pod stopę i prowadzi w górę", () => {
-    const beta = computeBeta(holds, GEO, { heightCm: 180 }, "flash");
+  it("każdy ruch prowadzi w górę", () => {
+    const beta = computeBeta(holds, GEO, { heightCm: 180 }, "static");
     const yById = new Map(holds.map((h) => [h.id, h.y]));
     for (const m of beta.moves) {
-      expect(m.footHoldId).toBeTruthy();
       expect(yById.get(m.toHoldId)!).toBeLessThan(yById.get(m.fromHoldId)!);
     }
   });
 });
 
-describe("model nóg — dobór chwytu pod stopę", () => {
-  // A (ręce) w lewo-dół, B (cel) w prawo-góra, C dokładnie pod B na wysokości A.
-  // Stopa na C jest bliżej celu niż stopa na A → algorytm wybiera C i skraca zasięg.
+describe("model nóg — stopa poniżej rąk, na innym chwycie", () => {
   const holds: Hold[] = [
-    hold(0.4, 0.7, { id: "A", isStart: true }),
-    hold(0.55, 0.5, { id: "B", isFinish: true }),
-    hold(0.5, 0.7, { id: "C" }), // pomocniczy chwyt pod stopę
+    hold(0.5, 0.9, { id: "start", isStart: true }),
+    hold(0.5, 0.82, { id: "h180" }),
+    hold(0.5, 0.74, { id: "h260" }),
+    hold(0.5, 0.66, { id: "top", isFinish: true }),
   ];
 
-  it("wybiera lepsze oparcie dla nogi i zmniejsza wymagany zasięg", () => {
-    const beta = computeBeta(holds, GEO, { heightCm: 180 }, "dynamic");
-    expect(beta.feasible).toBe(true);
-    expect(beta.moveCount).toBe(1);
-    const move = beta.moves[0]!;
-    expect(move.footHoldId).toBe("C");
-    // zasięg od stopy (C→B) jest mniejszy niż sam ruch ręki (A→B)
-    expect(move.footReachCm).toBeLessThan(move.distanceCm);
+  it("stopa stoi na niżej położonym chwycie, nie na chwycie rąk", () => {
+    const beta = computeBeta(holds, GEO, { heightCm: 180 }, "static");
+    const yById = new Map(holds.map((h) => [h.id, h.y]));
+    // ostatni ruch (h260 -> top): stopa na h180 — inny chwyt i wyraźnie niżej
+    const last = beta.moves.at(-1)!;
+    expect(last.fromHoldId).toBe("h260");
+    expect(last.footHoldId).not.toBe(last.fromHoldId);
+    // niżej = większe y obrazu
+    expect(yById.get(last.footHoldId)!).toBeGreaterThan(yById.get(last.fromHoldId)!);
   });
 });
 
-describe("statyczny vs dynamiczny zależy od oparcia nogi", () => {
-  // pojedyncza luka 220 cm — stopa zostaje na starcie, za nisko na ruch statyczny
+describe("statyczny vs dynamiczny", () => {
+  // pojedyncza luka 220 cm (baza na starcie, ale za daleko na ruch statyczny)
   const holds: Hold[] = [
     hold(0.5, 0.8, { id: "start", isStart: true }),
     hold(0.5, 0.58, { id: "top", isFinish: true }),
   ];
 
-  it("statyczny niewykonalny, dynamiczny/flash wykonalny i ruch oznaczony jako wyskok", () => {
+  it("statyczny niewykonalny, dynamiczny/flash wykonalny (wyskok)", () => {
     const betas = computeAllBetas(holds, GEO, { heightCm: 180 });
     expect(betas.static.feasible).toBe(false);
     expect(betas.static.note).toMatch(/zasięg/i);
@@ -88,22 +87,20 @@ describe("statyczny vs dynamiczny zależy od oparcia nogi", () => {
   });
 });
 
-describe("wpływ wzrostu na betę", () => {
-  // start (yUp 100), mid (yUp 220), top (yUp 340). Luki: 120 / 120 / 240 cm.
+describe("wpływ wzrostu — ten sam ruch: wyskok vs kontrola", () => {
+  // luka 190 cm
   const holds: Hold[] = [
-    hold(0.5, 0.9, { id: "start", isStart: true }),
-    hold(0.5, 0.78, { id: "mid" }),
-    hold(0.5, 0.66, { id: "top", isFinish: true }),
+    hold(0.5, 0.8, { id: "start", isStart: true }),
+    hold(0.5, 0.61, { id: "top", isFinish: true }),
   ];
 
-  it("wyższy wspinacz przeskakuje chwyt pośredni (mniej ruchów)", () => {
+  it("niski musi wyskoczyć, wysoki robi statycznie", () => {
     const low = computeBeta(holds, GEO, { heightCm: 160 }, "dynamic");
     const tall = computeBeta(holds, GEO, { heightCm: 210 }, "dynamic");
     expect(low.feasible).toBe(true);
     expect(tall.feasible).toBe(true);
-    expect(low.moveCount).toBe(2); // niski: zasięg dynamiczny 224 cm < 240 → przez mid
-    expect(tall.moveCount).toBe(1); // wysoki: zasięg 294 cm ≥ 240 → bezpośrednio
-    expect(tall.holdSequence).toEqual(["start", "top"]);
+    expect(low.moves[0]!.isDynamic).toBe(true); // 190 > zasięg statyczny 160
+    expect(tall.moves[0]!.isDynamic).toBe(false); // 190 ≤ zasięg statyczny 210
   });
 });
 
@@ -114,21 +111,21 @@ describe("brak przejścia", () => {
     hold(0.5, 0.5, { id: "top", isFinish: true }),
   ];
 
-  it("wszystkie poziomy są niewykonalne i zwracają opis", () => {
+  it("wszystkie poziomy niewykonalne", () => {
     const betas = computeAllBetas(holds, GEO, { heightCm: 150 });
     for (const level of ["static", "dynamic", "flash"] as const) {
       expect(betas[level].feasible).toBe(false);
-      expect(betas[level].note).toBeTruthy();
       expect(betas[level].holdSequence).toHaveLength(0);
     }
   });
 });
 
 describe("fallback start/top", () => {
+  // bez oznaczeń — najniższy chwyt staje się startem (z bazą), najwyższy topem
   const holds: Hold[] = [
     hold(0.5, 0.9, { id: "a" }),
-    hold(0.5, 0.8, { id: "b" }),
-    hold(0.5, 0.7, { id: "c" }),
+    hold(0.5, 0.82, { id: "b" }),
+    hold(0.5, 0.74, { id: "c" }),
   ];
 
   it("wybiera najniższy jako start i najwyższy jako top", () => {

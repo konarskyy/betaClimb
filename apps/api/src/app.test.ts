@@ -75,12 +75,13 @@ describe("przepływ auth → trasa → beta", () => {
         imgW: 1000,
         imgH: 1000,
         routeHeightM: 10,
+        // drabinka co 80 cm (przy modelu nóg stopa jest ~80 cm poniżej rąk)
         holds: [
           { x: 0.5, y: 0.9, isStart: true, isFinish: false },
-          { x: 0.5, y: 0.8, isStart: false, isFinish: false },
-          { x: 0.5, y: 0.7, isStart: false, isFinish: false },
-          { x: 0.5, y: 0.6, isStart: false, isFinish: false },
-          { x: 0.5, y: 0.5, isStart: false, isFinish: true },
+          { x: 0.5, y: 0.82, isStart: false, isFinish: false },
+          { x: 0.5, y: 0.74, isStart: false, isFinish: false },
+          { x: 0.5, y: 0.66, isStart: false, isFinish: false },
+          { x: 0.5, y: 0.58, isStart: false, isFinish: true },
         ],
       },
     });

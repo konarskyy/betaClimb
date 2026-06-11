@@ -12,9 +12,11 @@ ruch ręki liczony jest **od chwytu pod stopą**, nie od dłoni.
    znanej wysokości trasy (`routeHeightM`) i wysokości zdjęcia (kwadratowe piksele).
    Oś `yUp` rośnie ku górze.
 2. **Analiza ruchu z modelem nóg.** Dla ruchu ręki `a→b` algorytm szuka **najlepszego
-   chwytu pod stopę**: chwyt na/poniżej rąk, poniżej celu i w zasięgu nogi
-   (`≤ 0.85 × wzrost`). Wykonalność i trudność liczone są od tego chwytu do celu
-   (`footDist`). Chwyt `a` jest zawsze kandydatem (stopa na opuszczanym chwycie).
+   chwytu pod stopę**: **inny chwyt niż trzymany ręką** i **wyraźnie poniżej rąk**
+   (min. `0.15 × wzrost` niżej), w zasięgu nogi (`≤ 0.85 × wzrost`). To oddaje technikę
+   „stopa idzie za ręką". Wykonalność i trudność liczone są od stopy do celu (`footDist`).
+   Przypadki brzegowe: na **starcie** liczy się stabilna baza (ziemia/chwyty startowe),
+   a ruch **bez dostępnego stopnia** możliwy jest tylko **dynamicznie** (wyskok bez nóg).
 3. **Statycznie czy dynamicznie?**
    - `footDist ≤ 1.0 × wzrost` → ruch **statyczny** (da się wykonać stojąc na chwycie),
    - `1.0 × wzrost < footDist ≤ 1.4 × wzrost` → ruch **dynamiczny** (wyskok napędzany
