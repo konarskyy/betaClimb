@@ -36,6 +36,7 @@ describe("przepływ auth → trasa → beta", () => {
     const body = res.json();
     expect(body.user.username).toBe(username);
     expect(body.user.heightCm).toBe(180);
+    expect(body.user.avatarUrl).toBeNull();
     expect(body.tokens.accessToken).toBeTruthy();
     accessToken = body.tokens.accessToken;
   });

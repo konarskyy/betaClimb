@@ -14,6 +14,7 @@ export interface PublicUser {
   id: string;
   username: string;
   heightCm: number;
+  avatarUrl: string | null;
   role: "user" | "admin";
 }
 

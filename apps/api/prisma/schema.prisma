@@ -17,6 +17,7 @@ model User {
   username     String   @unique
   passwordHash String
   heightCm     Int
+  avatarUrl    String?
   role         Role     @default(user)
   createdAt    DateTime @default(now())
 

@@ -69,6 +69,24 @@ async function tryRefresh(): Promise<boolean> {
   return true;
 }
 
+/** Upload pliku obrazu (multipart) na podany endpoint. */
+async function uploadFile<T>(path: string, uri: string): Promise<T> {
+  const form = new FormData();
+  const ext = uri.split(".").pop()?.toLowerCase() ?? "jpg";
+  const mime = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+  // React Native FormData przyjmuje obiekt { uri, name, type }
+  form.append("file", { uri, name: `upload.${ext}`, type: mime } as unknown as Blob);
+
+  const token = getAccessToken();
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as T;
+}
+
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -112,6 +130,9 @@ export const api = {
   updateProfile(heightCm: number) {
     return request<PublicUser>("/me", { method: "PATCH", body: { heightCm } });
   },
+  uploadAvatar(uri: string) {
+    return uploadFile<PublicUser>("/me/avatar", uri);
+  },
 
   // ---------- Trasy ----------
   listRoutes() {
@@ -133,22 +154,9 @@ export const api = {
     return request<BetaResponse>(`/routes/${routeId}/beta`, { body: opts });
   },
 
-  // ---------- Upload zdjęcia (multipart) ----------
-  async uploadImage(routeId: string, uri: string): Promise<RouteDetail> {
-    const form = new FormData();
-    const ext = uri.split(".").pop()?.toLowerCase() ?? "jpg";
-    const mime = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
-    // React Native FormData przyjmuje obiekt { uri, name, type }
-    form.append("file", { uri, name: `route.${ext}`, type: mime } as unknown as Blob);
-
-    const token = getAccessToken();
-    const res = await fetch(`${API_URL}/routes/${routeId}/image`, {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form,
-    });
-    if (!res.ok) await parseError(res);
-    return (await res.json()) as RouteDetail;
+  // ---------- Upload zdjęcia trasy (multipart) ----------
+  uploadImage(routeId: string, uri: string) {
+    return uploadFile<RouteDetail>(`/routes/${routeId}/image`, uri);
   },
 };
 
