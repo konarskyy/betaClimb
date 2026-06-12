@@ -28,6 +28,9 @@ apps/mobile/.expo/
 apps/mobile/dist/
 apps/mobile/web-build/
 
+# lokalne, zależne od urządzenia (ścieżki, adres LAN) — nie dla innych
+START.md
+
 # os / editor
 .DS_Store
 .idea/
