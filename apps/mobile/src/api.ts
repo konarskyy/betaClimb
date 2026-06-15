@@ -40,6 +40,32 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * `fetch` z limitem czasu — bez tego nieosiągalny serwer (np. zły adres LAN)
+ * powoduje, że żądanie wisi w nieskończoność, a w UI kręci się spinner.
+ */
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs = 12000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new ApiError(
+        0,
+        `Brak połączenia z serwerem (${API_URL}). Sprawdź, czy backend działa i czy adres LAN jest aktualny.`,
+      );
+    }
+    throw new ApiError(0, `Nie można połączyć z serwerem (${API_URL}).`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function parseError(res: Response): Promise<never> {
   let message = `Błąd serwera (${res.status})`;
   try {
@@ -55,7 +81,7 @@ async function parseError(res: Response): Promise<never> {
 async function tryRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
-  const res = await fetch(`${API_URL}/auth/refresh`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refreshToken }),
@@ -78,11 +104,15 @@ async function uploadFile<T>(path: string, uri: string): Promise<T> {
   form.append("file", { uri, name: `upload.${ext}`, type: mime } as unknown as Blob);
 
   const token = getAccessToken();
-  const res = await fetch(`${API_URL}${path}`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  });
+  const res = await fetchWithTimeout(
+    `${API_URL}${path}`,
+    {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    },
+    30000, // upload zdjęcia może trwać dłużej
+  );
   if (!res.ok) await parseError(res);
   return (await res.json()) as T;
 }
@@ -101,7 +131,7 @@ async function request<T>(path: string, opts: RequestOptions = {}, retry = true)
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetchWithTimeout(`${API_URL}${path}`, {
     method: opts.method ?? (opts.body !== undefined ? "POST" : "GET"),
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
