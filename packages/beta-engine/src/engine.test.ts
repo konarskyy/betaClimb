@@ -121,6 +121,44 @@ describe("brak przejścia", () => {
   });
 });
 
+describe("statyka korzysta ze WSZYSTKICH chwytów", () => {
+  // chwyty co 60 cm — wysoki wspinacz mógłby pomijać pośrednie, ale statyka nie pomija
+  const holds: Hold[] = [
+    hold(0.5, 0.9, { id: "s", isStart: true }), // yUp 100
+    hold(0.5, 0.84, { id: "m1" }), // yUp 160
+    hold(0.5, 0.78, { id: "m2" }), // yUp 220
+    hold(0.5, 0.72, { id: "t", isFinish: true }), // yUp 280
+  ];
+
+  it("statyczna sekwencja zawiera każdy chwyt, od najniższego do najwyższego", () => {
+    const beta = computeBeta(holds, GEO, { heightCm: 200 }, "static");
+    expect(beta.feasible).toBe(true);
+    expect(beta.holdSequence).toEqual(["s", "m1", "m2", "t"]);
+  });
+
+  it("dynamiczna może pomijać chwyty (mniej, większych ruchów)", () => {
+    const dyn = computeBeta(holds, GEO, { heightCm: 200 }, "dynamic");
+    expect(dyn.feasible).toBe(true);
+    expect(dyn.holdSequence.length).toBeLessThan(holds.length);
+  });
+});
+
+describe("flash ma zawsze najwyższą ocenę trudności", () => {
+  const holds: Hold[] = [
+    hold(0.5, 0.9, { id: "start", isStart: true }),
+    hold(0.5, 0.82, { id: "h180" }),
+    hold(0.5, 0.74, { id: "h260" }),
+    hold(0.5, 0.66, { id: "top", isFinish: true }),
+  ];
+
+  it("trudność flash > statyczna i > dynamiczna", () => {
+    const betas = computeAllBetas(holds, GEO, { heightCm: 180 });
+    expect(betas.flash.feasible).toBe(true);
+    expect(betas.flash.totalDifficulty).toBeGreaterThan(betas.static.totalDifficulty);
+    expect(betas.flash.totalDifficulty).toBeGreaterThan(betas.dynamic.totalDifficulty);
+  });
+});
+
 describe("fallback start/top", () => {
   const holds: Hold[] = [
     hold(0.5, 0.9, { id: "a" }),

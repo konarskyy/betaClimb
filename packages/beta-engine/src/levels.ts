@@ -22,6 +22,30 @@ export const LEG_SPAN_FACTOR = 0.85;
 export const MIN_FOOT_DROP_FACTOR = 0.15;
 
 /**
+ * Waga trudności wg stylu przejścia. Trudność liczymy względem WSPÓLNEJ miary
+ * (zasięgu dynamicznego), a potem skalujemy wagą stylu, żeby oceny różnych
+ * poziomów były porównywalne:
+ *  - `static` — kontrolowane, pewne ruchy → najniższa ocena,
+ *  - `dynamic` — wyskoki → wyższa,
+ *  - `flash` — przejście „pierwszej próby" bez rozpoznania → najwyższa.
+ */
+export const LEVEL_DIFFICULTY_WEIGHT: Record<BetaLevel, number> = {
+  static: 1.0,
+  dynamic: 1.25,
+  flash: 1.6,
+};
+
+/** Dodatkowa kara do trudności za ruch dynamiczny (wyskok jest pewniejszym ryzykiem). */
+export const DYNO_DIFFICULTY_PENALTY = 1.4;
+
+/**
+ * Margines, o jaki ocena trudności flash musi przewyższać statyczną i dynamiczną.
+ * Flash (onsight, bez rozpoznania) jest z definicji najbardziej zobowiązujący,
+ * więc jego punktacja nigdy nie może być równa ani niższa od pozostałych poziomów.
+ */
+export const FLASH_DIFFICULTY_MARGIN = 1.1;
+
+/**
  * Rodzaj oparcia stopy:
  *  - `hold`  — na innym, niżej położonym chwycie,
  *  - `smear` — tarcie o gołą ścianę (gdy brak chwytu),

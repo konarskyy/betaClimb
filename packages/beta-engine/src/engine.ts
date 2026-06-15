@@ -10,8 +10,11 @@ import { BETA_LEVELS } from "@betaclimb/shared";
 import { distanceCm, toCm, type HoldCm } from "./geometry.js";
 import {
   DYNAMIC_REACH_FACTOR,
+  DYNO_DIFFICULTY_PENALTY,
+  FLASH_DIFFICULTY_MARGIN,
   LEG_SPAN_FACTOR,
   LEVEL_CONFIGS,
+  LEVEL_DIFFICULTY_WEIGHT,
   MIN_FOOT_DROP_FACTOR,
   SMEAR_REACH_FACTOR,
   STATIC_REACH_FACTOR,
@@ -138,6 +141,26 @@ function resolveEndpoints(holds: HoldCm[]): { starts: Set<string>; finishes: Set
 }
 
 /**
+ * Sekwencja statyczna: WSZYSTKIE chwyty trasy od najniższego do najwyższego.
+ * Statyka to najpewniejszy styl — wspinacz nie pomija żadnego chwytu, robiąc
+ * najmniejsze możliwe ruchy. (Dlatego nie używamy tu Dijkstry, która skracałaby
+ * drogę przez pomijanie chwytów pośrednich.)
+ */
+function staticChain(holds: HoldCm[]): string[] {
+  return [...holds].sort((a, b) => a.yUpCm - b.yUpCm).map((h) => h.id);
+}
+
+/** Czy cały statyczny łańcuch da się przejść kontrolowanymi ruchami. */
+function staticChainFeasible(chain: string[], byId: Map<string, HoldCm>, holds: HoldCm[], heightCm: number): boolean {
+  for (let i = 1; i < chain.length; i++) {
+    const a = byId.get(chain[i - 1]!)!;
+    const b = byId.get(chain[i]!)!;
+    if (!analyzeMove(a, b, holds, heightCm).staticFeasible) return false;
+  }
+  return true;
+}
+
+/**
  * Buduje graf skierowany: krawędź a→b istnieje, gdy b leży WYŻEJ niż a i dany
  * poziom dopuszcza ruch (z uwzględnieniem oparcia dla nogi). Ścisły warunek
  * „wyżej" czyni graf acyklicznym, więc Dijkstra zawsze się zakończy.
@@ -255,8 +278,18 @@ export function computeBeta(
   const byId = new Map(cmHolds.map((h) => [h.id, h]));
   const { starts, finishes } = resolveEndpoints(cmHolds);
 
-  const adj = buildGraph(cmHolds, climber.heightCm, config);
-  const path = shortestPath(cmHolds, adj, starts, finishes);
+  let path: string[] | null;
+  if (level === "static") {
+    // statyka: użyj WSZYSTKICH chwytów (najmniejsze, najpewniejsze ruchy)
+    const chain = staticChain(cmHolds);
+    path =
+      chain.length >= 2 && staticChainFeasible(chain, byId, cmHolds, climber.heightCm)
+        ? chain
+        : null;
+  } else {
+    const adj = buildGraph(cmHolds, climber.heightCm, config);
+    path = shortestPath(cmHolds, adj, starts, finishes);
+  }
 
   if (!path) {
     const gap = largestUnavoidableGapCm(cmHolds, finishes);
@@ -270,18 +303,27 @@ export function computeBeta(
       hardestMove: 0,
       maxReachCm: Math.round(maxReachCm),
       note:
-        gap > maxReachCm
-          ? `Brak przejścia: luka ${Math.round(gap)} cm przekracza zasięg ${Math.round(maxReachCm)} cm dla tego poziomu.`
-          : "Brak przejścia od startu do topu dla tego poziomu.",
+        level === "static"
+          ? `Brak płynnego przejścia statycznego — między sąsiednimi chwytami jest zbyt duża luka (do ${Math.round(gap)} cm) na kontrolowany ruch. Spróbuj poziomu dynamicznego.`
+          : gap > maxReachCm
+            ? `Brak przejścia: luka ${Math.round(gap)} cm przekracza zasięg ${Math.round(maxReachCm)} cm dla tego poziomu.`
+            : "Brak przejścia od startu do topu dla tego poziomu.",
     };
   }
+
+  // wspólna miara wysiłku dla wszystkich poziomów — dzięki temu oceny są porównywalne
+  const referenceReachCm = climber.heightCm * DYNAMIC_REACH_FACTOR;
+  const weight = LEVEL_DIFFICULTY_WEIGHT[level];
 
   const moves: BetaMove[] = [];
   for (let i = 1; i < path.length; i++) {
     const from = byId.get(path[i - 1]!)!;
     const to = byId.get(path[i]!)!;
     const an = analyzeMove(from, to, cmHolds, climber.heightCm);
-    const reachUsage = an.footDistCm / maxReachCm;
+    const reachUsage = an.footDistCm / maxReachCm; // względem zasięgu poziomu (informacyjnie)
+    const strain = an.footDistCm / referenceReachCm; // wspólna miara
+    let raw = strain * 10 * weight;
+    if (an.isDynamic) raw *= DYNO_DIFFICULTY_PENALTY;
     moves.push({
       index: i,
       fromHoldId: from.id,
@@ -291,7 +333,7 @@ export function computeBeta(
       distanceCm: Math.round(an.handDistCm * 10) / 10,
       footReachCm: Math.round(an.footDistCm * 10) / 10,
       reachUsage: Math.round(reachUsage * 100) / 100,
-      difficulty: Math.round(reachUsage * 100) / 10, // skala 0..10
+      difficulty: Math.round(raw * 10) / 10, // skala ~0..10+
       isDynamic: an.isDynamic,
     });
   }
@@ -311,6 +353,33 @@ export function computeBeta(
   };
 }
 
+/**
+ * Gwarantuje, że ŁĄCZNA ocena trudności flash jest ŚCIŚLE wyższa niż statyczna
+ * i dynamiczna. Flash = przejście „pierwszej próby" bez rozpoznania, więc z definicji
+ * jest najbardziej zobowiązujący. Jeśli geometria trasy daje inaczej, skalujemy trudności
+ * wszystkich ruchów flash wspólnym współczynnikiem (spójnie: suma = suma ruchów, a krux
+ * skaluje się proporcjonalnie i pozostaje fizycznie sensowny).
+ */
+function enforceFlashIsHardest(betas: Partial<Record<BetaLevel, BetaResult>>): void {
+  const flash = betas.flash;
+  if (!flash?.feasible || flash.moves.length === 0 || flash.totalDifficulty <= 0) return;
+  const others = [betas.static, betas.dynamic].filter(
+    (b): b is BetaResult => !!b?.feasible,
+  );
+  if (others.length === 0) return;
+
+  const totalFloor = Math.max(...others.map((b) => b.totalDifficulty));
+  const s = (totalFloor * FLASH_DIFFICULTY_MARGIN) / flash.totalDifficulty;
+  if (s <= 1) return;
+
+  flash.moves = flash.moves.map((m) => ({
+    ...m,
+    difficulty: Math.round(m.difficulty * s * 10) / 10,
+  }));
+  flash.totalDifficulty = Math.round(flash.moves.reduce((sum, m) => sum + m.difficulty, 0) * 10) / 10;
+  flash.hardestMove = flash.moves.reduce((mx, m) => Math.max(mx, m.difficulty), 0);
+}
+
 /** Wyznacza betę dla wybranych (domyślnie wszystkich) poziomów. */
 export function computeAllBetas(
   holds: Hold[],
@@ -322,5 +391,6 @@ export function computeAllBetas(
   for (const level of levels) {
     out[level] = computeBeta(holds, geometry, climber, level);
   }
+  enforceFlashIsHardest(out);
   return out;
 }
