@@ -14,6 +14,8 @@ export const colors = {
   start: "#46d39a", // chwyt startowy
   finish: "#ff6b6b", // chwyt końcowy (top)
   hold: "#ffd54a", // zwykły chwyt
+  krux: "#ff4d6d", // najtrudniejszy ruch (krux)
+  foot: "#b388ff", // oparcie stopy
 };
 
 export const levelColor: Record<BetaLevel, string> = {

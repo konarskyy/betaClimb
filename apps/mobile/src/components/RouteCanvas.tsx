@@ -25,6 +25,10 @@ interface Props {
   beta?: BetaResult | null;
   /** rozmyj i przyciemnij zdjęcie w tle (ekran wyniku), by chwyty były wyraźniejsze */
   blurBackground?: boolean;
+  /** tryb krok-po-kroku: numer aktualnie pokazywanego ruchu (1..n); null = cała trasa */
+  activeMoveIndex?: number | null;
+  /** numer najtrudniejszego ruchu (krux) — wyróżniony kolorem */
+  kruxIndex?: number | null;
 }
 
 const TAP_HIT = 0.05; // próg trafienia w istniejący chwyt (w jedn. znormalizowanych)
@@ -40,6 +44,8 @@ export function RouteCanvas({
   onSelectHold,
   beta,
   blurBackground,
+  activeMoveIndex,
+  kruxIndex,
 }: Props) {
   const [width, setWidth] = useState(0);
   const height = width > 0 ? width * (imgH / imgW) : 0;
@@ -75,6 +81,12 @@ export function RouteCanvas({
 
   const byId = new Map(holds.map((h) => [h.id, h]));
   const betaColor = beta ? levelColor[beta.level] : colors.primary;
+  const stepping = activeMoveIndex != null;
+  const activeMove = stepping ? beta?.moves.find((m) => m.index === activeMoveIndex) ?? null : null;
+  const targetId = activeMove?.toHoldId ?? null;
+  const footHold = activeMove?.footType === "hold" && activeMove.footHoldId
+    ? byId.get(activeMove.footHoldId) ?? null
+    : null;
 
   function holdColor(h: Hold): string {
     if (h.isStart) return colors.start;
@@ -112,6 +124,11 @@ export function RouteCanvas({
               const a = byId.get(m.fromHoldId);
               const b = byId.get(m.toHoldId);
               if (!a || !b) return null;
+              // w trybie krok-po-kroku ukryj ruchy jeszcze niewykonane
+              if (stepping && m.index > activeMoveIndex!) return null;
+              const isCurrent = stepping && m.index === activeMoveIndex;
+              const isKrux = kruxIndex != null && m.index === kruxIndex;
+              const done = stepping && m.index < activeMoveIndex!;
               return (
                 <Line
                   key={`mv-${m.index}`}
@@ -119,36 +136,73 @@ export function RouteCanvas({
                   y1={a.y * height}
                   x2={b.x * width}
                   y2={b.y * height}
-                  stroke={betaColor}
-                  strokeWidth={3}
+                  stroke={isKrux ? colors.krux : betaColor}
+                  strokeWidth={isCurrent ? 5 : 3}
+                  strokeOpacity={done ? 0.25 : 1}
                   strokeDasharray={m.isDynamic ? "8,6" : undefined}
                   strokeLinecap="round"
                 />
               );
             })}
 
+            {/* Łącznik stopy (pod chwytami) — od ręki do oparcia stopy */}
+            {footHold && activeMove && (() => {
+              const from = byId.get(activeMove.fromHoldId);
+              if (!from) return null;
+              return (
+                <Line
+                  x1={from.x * width}
+                  y1={from.y * height}
+                  x2={footHold.x * width}
+                  y2={footHold.y * height}
+                  stroke={colors.foot}
+                  strokeWidth={2}
+                  strokeDasharray="3,6"
+                  strokeOpacity={0.9}
+                />
+              );
+            })()}
+
             {/* Chwyty */}
             {holds.map((h) => {
               const selected = h.id === selectedHoldId;
+              const isTarget = h.id === targetId;
+              const emph = selected || isTarget;
               return (
                 <Circle
                   key={h.id}
                   cx={h.x * width}
                   cy={h.y * height}
-                  r={selected ? 13 : 10}
+                  r={emph ? 13 : 10}
                   fill={holdColor(h)}
                   fillOpacity={0.85}
-                  stroke={selected ? "#ffffff" : "rgba(0,0,0,0.55)"}
-                  strokeWidth={selected ? 3 : 2}
+                  stroke={emph ? "#ffffff" : "rgba(0,0,0,0.55)"}
+                  strokeWidth={emph ? 3 : 2}
                 />
               );
             })}
 
-            {/* Numeracja kroków bety */}
+            {/* Oparcie stopy (na chwytach) dla aktualnego ruchu */}
+            {footHold && (
+              <Circle
+                cx={footHold.x * width}
+                cy={footHold.y * height}
+                r={13}
+                fill={colors.foot}
+                fillOpacity={0.95}
+                stroke="#ffffff"
+                strokeWidth={2}
+              />
+            )}
+
+            {/* Numeracja kroków bety — w trybie krok-po-kroku tylko do bieżącego */}
             {beta?.feasible &&
               beta.holdSequence.map((id, i) => {
                 const h = byId.get(id);
                 if (!h) return null;
+                if (stepping && activeMove && i > beta.holdSequence.indexOf(activeMove.toHoldId)) {
+                  return null;
+                }
                 return (
                   <SvgText
                     key={`n-${id}`}

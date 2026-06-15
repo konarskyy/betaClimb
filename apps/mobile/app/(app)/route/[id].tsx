@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api, imageSrc } from "@/api";
 import { RouteCanvas } from "@/components/RouteCanvas";
@@ -11,9 +11,16 @@ import { BETA_LEVEL_LABEL, BETA_LEVELS, type BetaLevel, type Hold } from "@/type
 export default function RouteDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [level, setLevel] = useState<BetaLevel>("flash");
+  const [stepMode, setStepMode] = useState(false);
+  const [step, setStep] = useState(1);
 
   const routeQ = useQuery({ queryKey: ["route", id], queryFn: () => api.getRoute(id) });
   const betaQ = useQuery({ queryKey: ["beta", id], queryFn: () => api.getBeta(id) });
+
+  // zmiana poziomu = inna sekwencja → wróć do pierwszego ruchu
+  useEffect(() => {
+    setStep(1);
+  }, [level]);
 
   if (routeQ.isLoading || betaQ.isLoading) {
     return (
@@ -35,6 +42,16 @@ export default function RouteDetail() {
   const beta = betaQ.data?.betas[level] ?? null;
   const holdsById = new Map<string, Hold>(route.holds.map((h) => [h.id, h]));
 
+  // krux = ruch o największej trudności
+  const kruxIndex =
+    beta?.feasible && beta.moves.length
+      ? beta.moves.reduce((best, m) => (m.difficulty > best.difficulty ? m : best)).index
+      : null;
+  const moveCount = beta?.moveCount ?? 0;
+  const canStep = !!beta?.feasible && moveCount > 0;
+  const currentStep = Math.min(step, moveCount);
+  const activeMoveIndex = stepMode && canStep ? currentStep : null;
+
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: route.name }} />
@@ -47,6 +64,8 @@ export default function RouteDetail() {
           holds={route.holds}
           beta={beta}
           blurBackground
+          activeMoveIndex={activeMoveIndex}
+          kruxIndex={kruxIndex}
         />
       ) : (
         <Card>
@@ -95,6 +114,43 @@ export default function RouteDetail() {
             </View>
           </Card>
 
+          {/* Tryb krok-po-kroku */}
+          <Pressable
+            onPress={() => setStepMode((v) => !v)}
+            style={[
+              styles.stepToggle,
+              { backgroundColor: stepMode ? levelColor[level] : colors.surface },
+            ]}
+          >
+            <Text
+              style={{ color: stepMode ? colors.primaryText : colors.text, fontWeight: "700" }}
+            >
+              {stepMode ? "✓ Krok po kroku" : "▶ Krok po kroku"}
+            </Text>
+          </Pressable>
+
+          {stepMode && (
+            <View style={styles.stepBar}>
+              <Pressable
+                onPress={() => setStep((s) => Math.max(1, Math.min(s, moveCount) - 1))}
+                disabled={currentStep <= 1}
+                style={[styles.stepNav, currentStep <= 1 && styles.stepNavOff]}
+              >
+                <Text style={styles.stepNavText}>◀</Text>
+              </Pressable>
+              <Text style={styles.stepLabel}>
+                Ruch {currentStep} / {moveCount}
+              </Text>
+              <Pressable
+                onPress={() => setStep((s) => Math.min(moveCount, Math.min(s, moveCount) + 1))}
+                disabled={currentStep >= moveCount}
+                style={[styles.stepNav, currentStep >= moveCount && styles.stepNavOff]}
+              >
+                <Text style={styles.stepNavText}>▶</Text>
+              </Pressable>
+            </View>
+          )}
+
           <Text style={styles.sectionTitle}>Sekwencja ruchów</Text>
           {beta.moves.map((m) => {
             const to = holdsById.get(m.toHoldId);
@@ -108,21 +164,39 @@ export default function RouteDetail() {
                   : footIdx >= 0
                     ? `krok ${footIdx + 1}`
                     : "chwyt pomocniczy";
+            const isKrux = m.index === kruxIndex;
+            const isActive = stepMode && m.index === currentStep;
             return (
-              <View key={m.index} style={styles.move}>
-                <View style={[styles.moveNum, { backgroundColor: levelColor[level] }]}>
+              <Pressable
+                key={m.index}
+                onPress={() => {
+                  setStepMode(true);
+                  setStep(m.index);
+                }}
+                style={[
+                  styles.move,
+                  isActive && { borderColor: levelColor[level], borderWidth: 2 },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.moveNum,
+                    { backgroundColor: isKrux ? colors.krux : levelColor[level] },
+                  ]}
+                >
                   <Text style={styles.moveNumText}>{m.index}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.moveText}>
                     Ruch do {target} · {Math.round(m.distanceCm)} cm
+                    {isKrux ? "  💀 krux" : ""}
                   </Text>
                   <Text style={styles.muted}>
                     {m.isDynamic ? "⚡ dynamiczny" : "kontrolowany"} · trudność {m.difficulty.toFixed(1)}
                   </Text>
                   <Text style={styles.muted}>🦶 stopa: {footLabel}</Text>
                 </View>
-              </View>
+              </Pressable>
             );
           })}
         </>
@@ -165,6 +239,33 @@ const styles = StyleSheet.create({
   heightNote: { color: colors.textMuted, fontSize: 12, marginTop: spacing.sm, textAlign: "center" },
   statsRow: { flexDirection: "row", justifyContent: "space-around" },
   stat: { alignItems: "center" },
+  stepToggle: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+  },
+  stepBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: spacing.sm,
+  },
+  stepNav: {
+    width: 56,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepNavOff: { opacity: 0.4 },
+  stepNavText: { color: colors.text, fontSize: 18, fontWeight: "800" },
+  stepLabel: { color: colors.text, fontWeight: "700", fontSize: 15 },
   statValue: { color: colors.text, fontSize: 22, fontWeight: "800" },
   sectionTitle: {
     color: colors.text,
