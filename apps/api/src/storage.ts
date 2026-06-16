@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { env } from "./env.js";
 
@@ -32,6 +32,20 @@ export async function saveImage(buffer: Buffer, mime: string): Promise<string> {
   const filename = `${randomUUID()}${ext}`;
   await writeFile(path.join(storageRoot, filename), buffer);
   return `/uploads/${filename}`;
+}
+
+/**
+ * Usuwa plik zdjęcia na podstawie zapisanego adresu (`/uploads/<plik>` lub starego
+ * adresu bezwzględnego). Best-effort — brak pliku nie jest błędem.
+ */
+export async function deleteImage(imageUrl: string): Promise<void> {
+  const filename = path.basename(imageUrl);
+  if (!filename) return;
+  try {
+    await unlink(path.join(storageRoot, filename));
+  } catch {
+    // plik mógł już nie istnieć — ignorujemy
+  }
 }
 
 export { storageRoot };

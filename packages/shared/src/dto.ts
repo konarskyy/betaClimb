@@ -90,6 +90,24 @@ export const createRouteSchema = z.object({
 });
 export type CreateRouteInput = z.infer<typeof createRouteSchema>;
 
+/** Edycja trasy — wszystkie pola opcjonalne; podanie `holds` zastępuje cały komplet. */
+export const updateRouteSchema = z
+  .object({
+    name: z.string().trim().min(1, "Podaj nazwę trasy").max(80).optional(),
+    routeHeightM: z.number().positive().max(60).optional(),
+    imgW: z.number().int().positive().optional(),
+    imgH: z.number().int().positive().optional(),
+    holds: z
+      .array(holdInputSchema)
+      .min(2, "Trasa musi mieć co najmniej 2 chwyty")
+      .max(200, "Zbyt wiele chwytów")
+      .optional(),
+  })
+  .refine((d) => Object.values(d).some((v) => v !== undefined), {
+    message: "Podaj przynajmniej jedno pole do zmiany",
+  });
+export type UpdateRouteInput = z.infer<typeof updateRouteSchema>;
+
 export const betaQuerySchema = z.object({
   /** opcjonalne nadpisanie wzrostu (domyślnie z profilu) */
   heightCm: z

@@ -1,10 +1,10 @@
 import type { BetaLevel, BetaResult } from "@betaclimb/shared";
-import { betaQuerySchema, createRouteSchema } from "@betaclimb/shared";
+import { betaQuerySchema, createRouteSchema, updateRouteSchema } from "@betaclimb/shared";
 import { computeAllBetas } from "@betaclimb/beta-engine";
 import type { FastifyInstance } from "fastify";
 import { parseBody } from "../lib/http.js";
 import { prisma } from "../prisma.js";
-import { isAllowedMime, saveImage } from "../storage.js";
+import { deleteImage, isAllowedMime, saveImage } from "../storage.js";
 
 export async function routeRoutes(app: FastifyInstance): Promise<void> {
   // Utworzenie trasy wraz z chwytami
@@ -54,6 +54,74 @@ export async function routeRoutes(app: FastifyInstance): Promise<void> {
       });
       if (!route) return reply.code(404).send({ error: "Nie znaleziono trasy" });
       return reply.send(route);
+    },
+  );
+
+  // Edycja trasy (nazwa / wysokość / wymiary / chwyty)
+  app.patch<{ Params: { id: string } }>(
+    "/routes/:id",
+    { preHandler: app.authenticate },
+    async (req, reply) => {
+      const body = parseBody(reply, updateRouteSchema, req.body);
+      if (!body) return;
+
+      const existing = await prisma.route.findFirst({
+        where: { id: req.params.id, userId: req.user!.sub },
+      });
+      if (!existing) return reply.code(404).send({ error: "Nie znaleziono trasy" });
+
+      const data = {
+        ...(body.name !== undefined && { name: body.name }),
+        ...(body.routeHeightM !== undefined && { routeHeightM: body.routeHeightM }),
+        ...(body.imgW !== undefined && { imgW: body.imgW }),
+        ...(body.imgH !== undefined && { imgH: body.imgH }),
+      };
+
+      // Podanie chwytów zastępuje cały komplet — atomowo (usuń stare + utwórz nowe).
+      if (body.holds) {
+        const updated = await prisma.$transaction(async (tx) => {
+          await tx.hold.deleteMany({ where: { routeId: existing.id } });
+          return tx.route.update({
+            where: { id: existing.id },
+            data: {
+              ...data,
+              holds: {
+                create: body.holds!.map((h) => ({
+                  x: h.x,
+                  y: h.y,
+                  isStart: h.isStart,
+                  isFinish: h.isFinish,
+                })),
+              },
+            },
+            include: { holds: true },
+          });
+        });
+        return reply.send(updated);
+      }
+
+      const updated = await prisma.route.update({
+        where: { id: existing.id },
+        data,
+        include: { holds: true },
+      });
+      return reply.send(updated);
+    },
+  );
+
+  // Usunięcie trasy (kaskadowo znikają chwyty; plik zdjęcia kasujemy best-effort)
+  app.delete<{ Params: { id: string } }>(
+    "/routes/:id",
+    { preHandler: app.authenticate },
+    async (req, reply) => {
+      const existing = await prisma.route.findFirst({
+        where: { id: req.params.id, userId: req.user!.sub },
+      });
+      if (!existing) return reply.code(404).send({ error: "Nie znaleziono trasy" });
+
+      await prisma.route.delete({ where: { id: existing.id } });
+      if (existing.imageUrl) await deleteImage(existing.imageUrl);
+      return reply.code(204).send();
     },
   );
 

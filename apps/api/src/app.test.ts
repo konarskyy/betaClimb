@@ -117,4 +117,43 @@ describe("przepływ auth → trasa → beta", () => {
     // model nóg: statyczny zasięg = 1.0 × wzrost (od chwytu pod stopą)
     expect(res.json().betas.static.maxReachCm).toBe(Math.round(200 * 1.0));
   });
+
+  it("edytuje nazwę i wysokość trasy (PATCH)", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/routes/${routeId}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { name: "Zmieniona nazwa", routeHeightM: 12 },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.name).toBe("Zmieniona nazwa");
+    expect(body.routeHeightM).toBe(12);
+  });
+
+  it("nie pozwala edytować cudzej/nieistniejącej trasy", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/routes/nieistniejace-id",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { name: "x" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("usuwa trasę (DELETE), potem zwraca 404", async () => {
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/routes/${routeId}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(del.statusCode).toBe(204);
+
+    const get = await app.inject({
+      method: "GET",
+      url: `/routes/${routeId}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(get.statusCode).toBe(404);
+  });
 });
