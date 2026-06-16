@@ -180,6 +180,21 @@ export const api = {
   }) {
     return request<RouteDetail>("/routes", { body: input });
   },
+  updateRoute(
+    id: string,
+    input: Partial<{
+      name: string;
+      routeHeightM: number;
+      imgW: number;
+      imgH: number;
+      holds: Omit<Hold, "id">[];
+    }>,
+  ) {
+    return request<RouteDetail>(`/routes/${id}`, { method: "PATCH", body: input });
+  },
+  deleteRoute(id: string) {
+    return request<void>(`/routes/${id}`, { method: "DELETE" });
+  },
   getBeta(routeId: string, opts: { heightCm?: number; levels?: BetaLevel[] } = {}) {
     return request<BetaResponse>(`/routes/${routeId}/beta`, { body: opts });
   },

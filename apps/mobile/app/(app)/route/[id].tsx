@@ -1,21 +1,83 @@
-import { useQuery } from "@tanstack/react-query";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { api, imageSrc } from "@/api";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { api, ApiError, imageSrc } from "@/api";
 import { RouteCanvas } from "@/components/RouteCanvas";
-import { Card } from "@/components/ui";
+import { Button, Card, ErrorText, Field } from "@/components/ui";
 import { colors, levelColor, radius, spacing } from "@/theme";
 import { BETA_LEVEL_LABEL, BETA_LEVELS, type BetaLevel, type Hold } from "@/types";
 
 export default function RouteDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [level, setLevel] = useState<BetaLevel>("flash");
   const [stepMode, setStepMode] = useState(false);
   const [step, setStep] = useState(1);
 
   const routeQ = useQuery({ queryKey: ["route", id], queryFn: () => api.getRoute(id) });
   const betaQ = useQuery({ queryKey: ["beta", id], queryFn: () => api.getBeta(id) });
+
+  // edycja ustawień trasy
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editHeight, setEditHeight] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  function startEditing() {
+    if (!routeQ.data) return;
+    setEditName(routeQ.data.name);
+    setEditHeight(String(routeQ.data.routeHeightM));
+    setEditError(null);
+    setEditing(true);
+  }
+
+  async function saveEdit() {
+    setEditError(null);
+    const name = editName.trim();
+    const routeHeightM = Number(editHeight);
+    if (!name) return setEditError("Podaj nazwę trasy.");
+    if (!Number.isFinite(routeHeightM) || routeHeightM <= 0 || routeHeightM > 60) {
+      return setEditError("Podaj wysokość trasy w metrach (0–60).");
+    }
+    setSavingEdit(true);
+    try {
+      await api.updateRoute(id, { name, routeHeightM });
+      // wysokość zmienia skalę → przelicz betę; odśwież też listę i szczegóły
+      await queryClient.invalidateQueries({ queryKey: ["route", id] });
+      await queryClient.invalidateQueries({ queryKey: ["beta", id] });
+      queryClient.invalidateQueries({ queryKey: ["routes"] });
+      setEditing(false);
+    } catch (e) {
+      setEditError(e instanceof ApiError ? e.message : "Nie udało się zapisać zmian.");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  function confirmDelete() {
+    Alert.alert("Usuń trasę", "Tej operacji nie można cofnąć. Usunąć trasę?", [
+      { text: "Anuluj", style: "cancel" },
+      {
+        text: "Usuń",
+        style: "destructive",
+        onPress: async () => {
+          setDeleting(true);
+          try {
+            await api.deleteRoute(id);
+            queryClient.invalidateQueries({ queryKey: ["routes"] });
+            router.replace("/(app)");
+          } catch (e) {
+            setDeleting(false);
+            Alert.alert("Błąd", e instanceof ApiError ? e.message : "Nie udało się usunąć trasy.");
+          }
+        },
+      },
+    ]);
+  }
 
   // zmiana poziomu = inna sekwencja → wróć do pierwszego ruchu
   useEffect(() => {
@@ -210,6 +272,50 @@ export default function RouteDetail() {
         </Card>
       )}
 
+      {/* Ustawienia trasy: edycja i usuwanie */}
+      <Text style={styles.sectionTitle}>Ustawienia trasy</Text>
+      <Card>
+        {editing ? (
+          <>
+            <Field label="Nazwa trasy" value={editName} onChangeText={setEditName} />
+            <Field
+              label="Wysokość trasy (m)"
+              value={editHeight}
+              onChangeText={setEditHeight}
+              keyboardType="decimal-pad"
+            />
+            <Text style={styles.editHint}>
+              Wysokość to skala zdjęcia — jej zmiana przelicza betę.
+            </Text>
+            <ErrorText>{editError}</ErrorText>
+            <Button title="Zapisz zmiany" onPress={saveEdit} loading={savingEdit} />
+            <View style={{ height: spacing.sm }} />
+            <Button title="Anuluj" variant="secondary" onPress={() => setEditing(false)} />
+          </>
+        ) : (
+          <>
+            <View style={styles.settingRow}>
+              <Text style={styles.muted}>Nazwa</Text>
+              <Text style={styles.settingValue}>{route.name}</Text>
+            </View>
+            <View style={styles.settingRow}>
+              <Text style={styles.muted}>Wysokość</Text>
+              <Text style={styles.settingValue}>{route.routeHeightM} m</Text>
+            </View>
+            <View style={styles.settingRow}>
+              <Text style={styles.muted}>Chwytów</Text>
+              <Text style={styles.settingValue}>{route.holds.length}</Text>
+            </View>
+            <View style={{ height: spacing.sm }} />
+            <Button title="Edytuj nazwę i wysokość" variant="secondary" onPress={startEditing} />
+          </>
+        )}
+      </Card>
+
+      <View style={{ marginTop: spacing.md }}>
+        <Button title="Usuń trasę" variant="danger" onPress={confirmDelete} loading={deleting} />
+      </View>
+
       <View style={{ height: spacing.xl }} />
     </ScrollView>
   );
@@ -266,6 +372,14 @@ const styles = StyleSheet.create({
   stepNavOff: { opacity: 0.4 },
   stepNavText: { color: colors.text, fontSize: 18, fontWeight: "800" },
   stepLabel: { color: colors.text, fontWeight: "700", fontSize: 15 },
+  editHint: { color: colors.textMuted, fontSize: 12, marginBottom: spacing.sm },
+  settingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: spacing.xs,
+  },
+  settingValue: { color: colors.text, fontWeight: "600" },
   statValue: { color: colors.text, fontSize: 22, fontWeight: "800" },
   sectionTitle: {
     color: colors.text,
