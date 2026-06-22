@@ -307,6 +307,12 @@ export default function RouteDetail() {
               <Text style={styles.settingValue}>{route.holds.length}</Text>
             </View>
             <View style={{ height: spacing.sm }} />
+            <Button
+              title="Edytuj chwyty na zdjęciu"
+              variant="secondary"
+              onPress={() => router.push(`/(app)/route-edit/${id}`)}
+            />
+            <View style={{ height: spacing.sm }} />
             <Button title="Edytuj nazwę i wysokość" variant="secondary" onPress={startEditing} />
           </>
         )}

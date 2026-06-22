@@ -28,6 +28,7 @@ export default function AppLayout() {
       <Stack.Screen name="new-route" options={{ title: "Nowa trasa", presentation: "modal" }} />
       <Stack.Screen name="profile" options={{ title: "Profil" }} />
       <Stack.Screen name="route/[id]" options={{ title: "Trasa" }} />
+      <Stack.Screen name="route-edit/[id]" options={{ title: "Edytuj chwyty" }} />
     </Stack>
   );
 }
