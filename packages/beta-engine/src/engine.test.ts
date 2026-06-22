@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Hold, RouteGeometry } from "@betaclimb/shared";
 import { computeAllBetas, computeBeta } from "./engine.js";
+import { gradeFromBetas } from "./grade.js";
 
 /**
  * Geometria testowa: 1000x1000 px, trasa 10 m → 1 cm na piksel.
@@ -156,6 +157,42 @@ describe("flash ma zawsze najwyższą ocenę trudności", () => {
     expect(betas.flash.feasible).toBe(true);
     expect(betas.flash.totalDifficulty).toBeGreaterThan(betas.static.totalDifficulty);
     expect(betas.flash.totalDifficulty).toBeGreaterThan(betas.dynamic.totalDifficulty);
+  });
+});
+
+describe("ocena trudności (skala V + kolor)", () => {
+  it("łatwa drabinka dostaje niski stopień; null gdy brak przejścia", () => {
+    const easy: Hold[] = [
+      hold(0.5, 0.9, { id: "s", isStart: true }),
+      hold(0.5, 0.82, { id: "m" }),
+      hold(0.5, 0.74, { id: "t", isFinish: true }),
+    ];
+    const grade = gradeFromBetas(computeAllBetas(easy, GEO, { heightCm: 180 }), 180);
+    expect(grade).not.toBeNull();
+    expect(grade!.vScale).toMatch(/^V\d+$/);
+    expect(grade!.color.hex).toMatch(/^#/);
+
+    const impossible: Hold[] = [
+      hold(0.5, 0.8, { id: "s", isStart: true }),
+      hold(0.5, 0.5, { id: "t", isFinish: true }), // luka 300 cm
+    ];
+    expect(gradeFromBetas(computeAllBetas(impossible, GEO, { heightCm: 150 }), 150)).toBeNull();
+  });
+
+  it("trudniejsza trasa (większe luki) ma wyższy stopień niż łatwa", () => {
+    const easy: Hold[] = [
+      hold(0.5, 0.9, { id: "s", isStart: true }),
+      hold(0.5, 0.84, { id: "m1" }),
+      hold(0.5, 0.78, { id: "m2" }),
+      hold(0.5, 0.72, { id: "t", isFinish: true }),
+    ];
+    const hard: Hold[] = [
+      hold(0.5, 0.9, { id: "s", isStart: true }),
+      hold(0.5, 0.7, { id: "t", isFinish: true }), // luka 200 cm — wyskok, ale wykonalny
+    ];
+    const gEasy = gradeFromBetas(computeAllBetas(easy, GEO, { heightCm: 180 }), 180)!;
+    const gHard = gradeFromBetas(computeAllBetas(hard, GEO, { heightCm: 180 }), 180)!;
+    expect(gHard.score).toBeGreaterThan(gEasy.score);
   });
 });
 

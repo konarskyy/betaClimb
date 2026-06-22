@@ -84,3 +84,24 @@ export interface ClimberProfile {
   /** wzrost w centymetrach */
   heightCm: number;
 }
+
+/** Kolor wg skali sali (np. lokalnej ścianki). */
+export interface GradeColor {
+  /** nazwa koloru, np. "Zielony" */
+  label: string;
+  /** kolor w HEX do wyświetlenia */
+  hex: string;
+}
+
+/**
+ * Ocena trudności trasy — spersonalizowana wzrostem wspinacza. Liczona z
+ * najłatwiejszego wykonalnego stylu (tak, jak realnie da się trasę przejść).
+ */
+export interface RouteGrade {
+  /** ciągły wynik trudności (≈0..16), pomocniczy do sortowania */
+  score: number;
+  /** skala boulderowa V (Hueco): "V0".."V16" */
+  vScale: string;
+  /** odpowiednik na skali kolorowej sali */
+  color: GradeColor;
+}

@@ -11,3 +11,4 @@ export {
   type MoveAnalysis,
 } from "./levels.js";
 export { toCm, distanceCm, cmPerPixel, type HoldCm } from "./geometry.js";
+export { gradeFromBetas } from "./grade.js";

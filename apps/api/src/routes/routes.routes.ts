@@ -1,6 +1,6 @@
 import type { BetaLevel, BetaResult } from "@betaclimb/shared";
 import { betaQuerySchema, createRouteSchema, updateRouteSchema } from "@betaclimb/shared";
-import { computeAllBetas } from "@betaclimb/beta-engine";
+import { computeAllBetas, gradeFromBetas } from "@betaclimb/beta-engine";
 import type { FastifyInstance } from "fastify";
 import { parseBody } from "../lib/http.js";
 import { prisma } from "../prisma.js";
@@ -33,14 +33,35 @@ export async function routeRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send(route);
   });
 
-  // Lista tras użytkownika
+  // Lista tras użytkownika (z oceną trudności policzoną pod wzrost użytkownika)
   app.get("/routes", { preHandler: app.authenticate }, async (req, reply) => {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!user) return reply.code(404).send({ error: "Nie znaleziono użytkownika" });
+
     const routes = await prisma.route.findMany({
       where: { userId: req.user!.sub },
       orderBy: { createdAt: "desc" },
-      include: { _count: { select: { holds: true } } },
+      include: { holds: true },
     });
-    return reply.send(routes);
+
+    const result = routes.map((r) => {
+      const betas = computeAllBetas(
+        r.holds.map((h) => ({
+          id: h.id,
+          x: h.x,
+          y: h.y,
+          isStart: h.isStart,
+          isFinish: h.isFinish,
+        })),
+        { imgW: r.imgW, imgH: r.imgH, routeHeightM: r.routeHeightM },
+        { heightCm: user.heightCm },
+      );
+      const grade = gradeFromBetas(betas, user.heightCm);
+      const { holds, ...rest } = r;
+      return { ...rest, _count: { holds: holds.length }, grade };
+    });
+
+    return reply.send(result);
   });
 
   // Szczegóły trasy
@@ -188,6 +209,7 @@ export async function routeRoutes(app: FastifyInstance): Promise<void> {
         routeId: route.id,
         heightCm,
         betas: betas as Record<BetaLevel, BetaResult>,
+        grade: gradeFromBetas(betas, heightCm),
       });
     },
   );
