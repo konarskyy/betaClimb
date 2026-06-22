@@ -36,6 +36,17 @@ export interface Hold {
   isFinish: boolean;
 }
 
+export interface GradeColor {
+  label: string;
+  hex: string;
+}
+
+export interface RouteGrade {
+  score: number;
+  vScale: string;
+  color: GradeColor;
+}
+
 export interface RouteSummary {
   id: string;
   name: string;
@@ -45,6 +56,7 @@ export interface RouteSummary {
   routeHeightM: number;
   createdAt: string;
   _count?: { holds: number };
+  grade?: RouteGrade | null;
 }
 
 export interface RouteDetail extends RouteSummary {
@@ -85,4 +97,5 @@ export interface BetaResponse {
   routeId: string;
   heightCm: number;
   betas: Record<BetaLevel, BetaResult>;
+  grade?: RouteGrade | null;
 }

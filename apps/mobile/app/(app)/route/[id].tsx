@@ -3,6 +3,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api, ApiError, imageSrc } from "@/api";
+import { GradeBadge } from "@/components/GradeBadge";
 import { RouteCanvas } from "@/components/RouteCanvas";
 import { Button, Card, ErrorText, Field } from "@/components/ui";
 import { colors, levelColor, radius, spacing } from "@/theme";
@@ -158,6 +159,18 @@ export default function RouteDetail() {
           );
         })}
       </View>
+
+      {betaQ.data?.grade && (
+        <Card style={{ marginTop: spacing.md }}>
+          <View style={styles.gradeRow}>
+            <View>
+              <Text style={styles.muted}>Trudność trasy</Text>
+              <Text style={styles.gradeHint}>dla wzrostu {betaQ.data.heightCm} cm</Text>
+            </View>
+            <GradeBadge grade={betaQ.data.grade} size="md" />
+          </View>
+        </Card>
+      )}
 
       {betaQ.data && (
         <Text style={styles.heightNote}>
@@ -349,6 +362,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   heightNote: { color: colors.textMuted, fontSize: 12, marginTop: spacing.sm, textAlign: "center" },
+  gradeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  gradeHint: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   statsRow: { flexDirection: "row", justifyContent: "space-around" },
   stat: { alignItems: "center" },
   stepToggle: {

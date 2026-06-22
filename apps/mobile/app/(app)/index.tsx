@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { api, imageSrc } from "@/api";
 import { Button } from "@/components/ui";
+import { GradeBadge } from "@/components/GradeBadge";
 import { colors, radius, spacing } from "@/theme";
 import type { RouteSummary } from "@/types";
 
@@ -41,6 +42,11 @@ export default function RoutesList() {
           <Text style={styles.meta}>
             {item._count?.holds ?? 0} chwytów · {item.routeHeightM} m
           </Text>
+          {item.grade && (
+            <View style={{ marginTop: spacing.xs, alignSelf: "flex-start" }}>
+              <GradeBadge grade={item.grade} size="sm" />
+            </View>
+          )}
         </View>
         <Text style={styles.chevron}>›</Text>
       </Pressable>
